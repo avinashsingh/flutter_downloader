@@ -70,7 +70,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
     private static final String TAG = DownloadWorker.class.getSimpleName();
     private static final int BUFFER_SIZE = 4096;
     private static final String CHANNEL_ID = "FLUTTER_DOWNLOADER_NOTIFICATION";
-    private static final int STEP_UPDATE = 10;
+    private static final double STEP_UPDATE = 0.1;
 
     private static final AtomicBoolean isolateStarted = new AtomicBoolean(false);
     private static final ArrayDeque<List> isolateQueue = new ArrayDeque<>();
@@ -85,7 +85,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
     private boolean showNotification;
     private boolean clickToOpenDownloadedFile;
     private boolean debug;
-    private int lastProgress = 0;
+    private double lastProgress = 0;
     private int primaryId;
     private String msgStarted, msgInProgress, msgCanceled, msgFailed, msgPaused, msgComplete;
 
@@ -196,7 +196,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
             return Result.success();
         } catch (Exception e) {
             updateNotification(context, filename == null ? url : filename, DownloadStatus.FAILED, -1, null);
-            taskDao.updateTask(getId().toString(), DownloadStatus.FAILED, lastProgress);
+            taskDao.updateTask(getId().toString(), DownloadStatus.FAILED, (int)lastProgress);
             e.printStackTrace();
             dbHelper = null;
             taskDao = null;
@@ -334,12 +334,13 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
                 byte[] buffer = new byte[BUFFER_SIZE];
                 while ((bytesRead = inputStream.read(buffer)) != -1 && !isStopped()) {
                     count += bytesRead;
-                    int progress = (int) ((count * 100) / (contentLength + downloadedBytes));
+                    double progressd = ((count * 100) / (contentLength + downloadedBytes));
+                    int progress = (int) progressd;
                     outputStream.write(buffer, 0, bytesRead);
 
-                    if ((lastProgress == 0 || progress > lastProgress + STEP_UPDATE || progress == 100)
-                            && progress != lastProgress) {
-                        lastProgress = progress;
+                    if ((lastProgress == 0 || progressd > lastProgress + STEP_UPDATE || progress == 100)
+                            && progressd != lastProgress) {
+                        lastProgress = progressd;
                         updateNotification(context, filename, DownloadStatus.RUNNING, progress, null);
 
                         // This line possibly causes system overloaded because of accessing to DB too many ?!!!
@@ -351,7 +352,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
                 }
 
                 DownloadTask task = taskDao.loadTask(getId().toString());
-                int progress = isStopped() && task.resumable ? lastProgress : 100;
+                int progress = isStopped() && task.resumable ? ((int)lastProgress) : 100;
                 int status = isStopped() ? (task.resumable ? DownloadStatus.PAUSED : DownloadStatus.CANCELED) : DownloadStatus.COMPLETE;
                 int storage = ContextCompat.checkSelfPermission(getApplicationContext(), android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
                 PendingIntent pendingIntent = null;
@@ -378,12 +379,12 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
                 DownloadTask task = taskDao.loadTask(getId().toString());
                 int status = isStopped() ? (task.resumable ? DownloadStatus.PAUSED : DownloadStatus.CANCELED) : DownloadStatus.FAILED;
                 updateNotification(context, filename, status, -1, null);
-                taskDao.updateTask(getId().toString(), status, lastProgress);
+                taskDao.updateTask(getId().toString(), status, (int)lastProgress);
                 log(isStopped() ? "Download canceled" : "Server replied HTTP code: " + responseCode);
             }
         } catch (IOException e) {
             updateNotification(context, filename == null ? fileURL : filename, DownloadStatus.FAILED, -1, null);
-            taskDao.updateTask(getId().toString(), DownloadStatus.FAILED, lastProgress);
+            taskDao.updateTask(getId().toString(), DownloadStatus.FAILED, (int) lastProgress);
             e.printStackTrace();
         } finally {
             if (outputStream != null) {
