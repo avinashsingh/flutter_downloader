@@ -338,10 +338,13 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
                     int progress = (int) progressd;
                     outputStream.write(buffer, 0, bytesRead);
 
-                    if ((lastProgress == 0 || progressd > lastProgress + STEP_UPDATE || progress == 100)
+                    if ((lastProgress == 0 || progressd > lastProgress + STEP_UPDATE || progress == 100 || count >= contentLength)
                             && progressd != lastProgress) {
                         lastProgress = progressd;
                         updateNotification(context, filename, DownloadStatus.RUNNING, progress, null);
+                        if (count >= contentLength) {
+                          updateNotification(context, filename, DownloadStatus.COMPLETE, 100, null);
+                        }
 
                         // This line possibly causes system overloaded because of accessing to DB too many ?!!!
                         // but commenting this line causes tasks loaded from DB missing current downloading progress,
@@ -373,6 +376,13 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
                 }
                 updateNotification(context, filename, status, progress, pendingIntent);
                 taskDao.updateTask(getId().toString(), status, progress);
+                
+                if (bytesRead == -1) {
+                  // download complete
+                  System.out.println("******* Download seems complete for task: " + task);
+                  updateNotification(context, filename, DownloadStatus.COMPLETE, 100, null);
+                }
+
 
                 log(isStopped() ? "Download canceled" : "File downloaded");
             } else {
@@ -461,7 +471,7 @@ public class DownloadWorker extends Worker implements MethodChannel.MethodCallHa
             shouldUpdate = true;
             builder.setContentText(progress == 0 ? msgStarted : msgInProgress)
                     .setProgress(100, progress, progress == 0);
-            builder.setOngoing(true)
+            builder.setOngoing(false)
                     .setSmallIcon(android.R.drawable.stat_sys_download);
         } else if (status == DownloadStatus.CANCELED) {
             shouldUpdate = true;
